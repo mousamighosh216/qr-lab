@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "dev": "ts-node-dev src/index.ts",
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
@@ -13,9 +13,7 @@
   "description": "",
   "dependencies": {
     "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "jsqr": "^1.4.0",
-    "qrcode": "^1.5.4"
+    "express": "^5.2.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
@@ -23,7 +21,6 @@
     "@types/jest": "^30.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.5.0",
-    "@types/qrcode": "^1.5.6",
     "jest": "^30.3.0",
     "nodemon": "^3.1.14",
     "ts-jest": "^29.4.9",

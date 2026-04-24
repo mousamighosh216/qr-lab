@@ -3,13 +3,14 @@
     "types": ["jest"],
     "target": "ES2020",
     "module": "CommonJS",
-    "rootDir": "./src",
-    "outDir": "./dist",
+    "rootDir": "src",
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
-    "paths": {
-      "@qrlab/types": ["../packages/types/src/index.ts"]
-    }
-  }
+  },
+  "references": [
+    { "path": "../packages/types" }
+  ],
+  "include": ["./src"],
+  "exclude": ["./tests", "node_modules"]
 }

@@ -7,10 +7,18 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
-    "dev:backend": "npm run dev --prefix backend",
-    "dev:frontend": "npm run dev --prefix frontend"
-  },
+  "dev": "concurrently --kill-others-on-fail \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+
+  "dev:backend": "npm run dev --prefix backend",
+  "dev:frontend": "npm run dev --prefix frontend",
+
+  "build": "npm run build -w @qrlab/types && npm run build -w backend && npm run build -w frontend",
+
+  "build:backend": "npm run build -w backend",
+  "build:frontend": "npm run build -w frontend",
+
+  "test": "npm run test -w backend"
+},
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/qrcode": "^1.5.6",

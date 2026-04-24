@@ -4,7 +4,11 @@
     "declaration": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "target": "ESNext"
+    "target": "ESNext",
+    "types": ["jest", "node"],
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": "src"
   },
   "include": ["src"]
 }

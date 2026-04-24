@@ -75,7 +75,7 @@ export interface ThresholdResult {
 export interface SimulationStatusResult {
   status: 'queued' | 'running' | 'done' | 'failed';
   progress: number;
-  partialResults?: null;
+  partialResults?: DataPoint[];
   result?: ThresholdResult;
   error?: string;
 }

@@ -1,132 +1,39 @@
-// src/api/routes/generate.ts
-// Phase 1: uses the `qrcode` npm library for generation.
-// Phase 2: swaps library call for our custom encoding pipeline.
+// src/api/routes/generate.ts — Phase 3 (full RS pipeline)
+import { Router,Request,Response,NextFunction } from "express";
+import type { GenerateQRResult, ECLevel } from "@qrlab/types";
+import { analyzeInput,buildBitstream } from "../../core/bitstream/builder";
+import { pad,bitsToCodewords } from "../../core/bitstream/padder";
+import { selectVersion,getVersionCapacity,getECBlockConfig } from "../../core/qr/version";
+import { createMatrix } from "../../core/qr/matrix";
+import { placeFinderPatterns,placeSeparators,placeTimingPatterns,placeAlignmentPatterns,placeDarkModule,reserveFormatRegions,reserveVersionRegions,placeDataModules } from "../../core/qr/placement";
+import { selectBestMask } from "../../core/qr/mask";
+import { encodeFormatString,writeFormatInfo,encodeVersionString,writeVersionInfo } from "../../core/qr/format";
+import { encodeBlock,interleaveBlocks } from "../../core/errorCorrection/reedSolomon";
+import { validateGenerateRequest,validateCapacityRequest,ApiError } from "../middleware/validate";
+import { matrixToSVG } from "../../utils/matrixUtils";
 
-import { Router, Request, Response, NextFunction } from "express";
-import QRCode from "qrcode";
-import type { Matrix, ModuleValue, ECLevel, Mode } from "@qrlab/types";
-import type { GenerateQRResult, CapacityResult } from "@qrlab/types";
-import { analyzeInput } from "../../core/bitstream/builder";
-import {
-  selectVersion,
-  getVersionCapacity,
-  getECBlockConfig,
-  getTotalDataCodewords,
-  getTotalECCodewords,
-} from "../../core/qr/version";
-import { validateGenerateRequest, validateCapacityRequest, ApiError } from "../middleware/validate";
+export const generateRouter=Router();
 
-export const generateRouter = Router();
-
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-// Map our ECLevel type to the string qrcode library expects
-const EC_MAP: Record<ECLevel, "low" | "medium" | "quartile" | "high"> = {
-  L: "low",
-  M: "medium",
-  Q: "quartile",
-  H: "high",
-};
-
-/**
- * Converts the qrcode library's internal module matrix (boolean[][])
- * into our Matrix type (ModuleValue[][]).
- *
- * The library returns a QRCode object. We access its `modules.data` array
- * (flat Uint8Array of 0/1 values) and reshape it into our 2D grid.
- */
-function libraryMatrixToMatrix(qr: any): Matrix {
-  const size: number = qr.modules.size;
-  const data: Uint8Array = qr.modules.data;
-  const matrix: Matrix = [];
-
-  for (let r = 0; r < size; r++) {
-    const row: ModuleValue[] = [];
-    for (let c = 0; c < size; c++) {
-      row.push(data[r * size + c] ? "BLACK" : "WHITE");
-    }
-    matrix.push(row);
-  }
-  return matrix;
+function runPipeline(input:string,ecLevel:ECLevel,versionOverride?:number):GenerateQRResult{
+  const a=analyzeInput(input);
+  const version=versionOverride??selectVersion(a.mode,ecLevel,a.characterCount);
+  if(a.characterCount>getVersionCapacity(version,ecLevel,a.mode)) throw new ApiError(422,`Input exceeds V${version}-${ecLevel} capacity`);
+  const padded=pad(buildBitstream(input,version),version,ecLevel);
+  const data=bitsToCodewords(padded);
+  const config=getECBlockConfig(version,ecLevel);
+  const encoded: ReturnType<typeof encodeBlock>[]=[];
+  const ecCW: number[]=[];
+  let offset=0;
+  for(const {count,dataCodewords:len,ecCodewordsPerBlock:ec} of config) for(let i=0;i<count;i++){const eb=encodeBlock(data.slice(offset,offset+len),ec);encoded.push(eb);ecCW.push(...eb.ec);offset+=len;}
+  const interleaved=interleaveBlocks(encoded);
+  const bits=interleaved.flatMap(b=>{const out:number[]=[];for(let i=7;i>=0;i--)out.push((b>>i)&1);return out;});
+  const matrix=createMatrix(version);
+  placeFinderPatterns(matrix);placeSeparators(matrix);placeTimingPatterns(matrix);placeAlignmentPatterns(matrix,version);placeDarkModule(matrix,version);reserveFormatRegions(matrix);reserveVersionRegions(matrix,version);placeDataModules(matrix,bits);
+  const {maskId,maskedMatrix}=selectBestMask(matrix);
+  writeFormatInfo(maskedMatrix,encodeFormatString(ecLevel,maskId));
+  if(version>=7) writeVersionInfo(maskedMatrix,encodeVersionString(version),version);
+  return {matrix:maskedMatrix,version,ecLevel,mode:a.mode,bitstream:[...bits],dataCodewords:data,ecCodewords:ecCW,blockConfig:config,svgPreview:matrixToSVG(maskedMatrix)};
 }
 
-// ─── POST /api/generate ───────────────────────────────────────────────────────
-
-generateRouter.post("/", async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    validateGenerateRequest(req);
-
-    const { input, ecLevel, version: versionOverride } = req.body as {
-      input: string;
-      ecLevel: ECLevel;
-      version?: number;
-    };
-
-    // Detect mode and select version
-    const analysis = analyzeInput(input);
-    const version = versionOverride ?? selectVersion(analysis.mode, ecLevel, analysis.characterCount);
-
-    // Verify the chosen version actually fits the input
-    const capacity = getVersionCapacity(version, ecLevel, analysis.mode);
-    if (analysis.characterCount > capacity) {
-      throw new ApiError(
-        422,
-        `Input of ${analysis.characterCount} ${analysis.mode} characters exceeds ` +
-        `V${version}-${ecLevel} capacity of ${capacity}`
-      );
-    }
-
-    // Generate using library — returns a QRCode object with .modules
-    const qr = await QRCode.create(input, {
-      errorCorrectionLevel: EC_MAP[ecLevel],
-      version,
-    });
-
-    const matrix = libraryMatrixToMatrix(qr);
-    const blockConfig = getECBlockConfig(version, ecLevel);
-    const totalData = getTotalDataCodewords(version, ecLevel);
-    const totalEC = getTotalECCodewords(version, ecLevel);
-
-    // The library doesn't expose codewords directly — Phase 2 will fill these
-    // from our custom encoder. For now return empty arrays so the shape is stable.
-    const result: GenerateQRResult = {
-      matrix,
-      version,
-      ecLevel,
-      mode: analysis.mode,
-      bitstream: [],          // Phase 2
-      dataCodewords: [],      // Phase 2
-      ecCodewords: [],        // Phase 2
-      blockConfig,
-      svgPreview: await QRCode.toString(input, {
-        type: "svg",
-        errorCorrectionLevel: EC_MAP[ecLevel],
-        version,
-      }),
-    };
-
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// ─── GET /api/generate/capacity ───────────────────────────────────────────────
-
-generateRouter.get("/capacity", (req: Request, res: Response, next: NextFunction) => {
-  try {
-    validateCapacityRequest(req);
-
-    const version = Number(req.query.version);
-    const ecLevel = req.query.ecLevel as ECLevel;
-    const mode = req.query.mode as Mode;
-
-    const result: CapacityResult = {
-      capacity: getVersionCapacity(version, ecLevel, mode),
-    };
-
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-});
+generateRouter.post("/",(req:Request,res:Response,next:NextFunction)=>{try{validateGenerateRequest(req);const{input,ecLevel,version}=req.body as{input:string;ecLevel:ECLevel;version?:number};res.json(runPipeline(input,ecLevel,version));}catch(err){next(err);}});
+generateRouter.get("/capacity",(req:Request,res:Response,next:NextFunction)=>{try{validateCapacityRequest(req);res.json({capacity:getVersionCapacity(Number(req.query.version),req.query.ecLevel as ECLevel,req.query.mode as any)});}catch(err){next(err);}});
