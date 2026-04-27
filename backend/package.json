@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "ts-node-dev src/index.ts",
+    "dev": "ts-node-dev src/server.ts",
     "test": "jest"
   },
   "keywords": [],
@@ -13,7 +13,8 @@
   "description": "",
   "dependencies": {
     "cors": "^2.8.6",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "jsqr": "^1.4.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

@@ -1,60 +1,121 @@
-// Core primitives — frontend renders Matrix, uses Coord for tooltips
-export type Bits = number[]
-export type Matrix = ModuleValue[][]
-export type ModuleValue = 'BLACK' | 'WHITE' | 'EMPTY' | 'RESERVED' | 'ERASED' | 'CORRUPTED' | 'RECOVERED'
-export type Coord = { row: number; col: number }
-export type Rect = { x: number; y: number; width: number; height: number }
+// packages/types/src/index.ts
+// Single source of truth for all types shared between frontend and backend.
+// Backend-only types (Block, EncodedBlock, etc.) stay in backend/src/types/.
 
-// Encoding — frontend sends these in request bodies, displays mode/ecLevel in UI
-export type Mode = 'numeric' | 'alphanumeric' | 'byte' | 'kanji'
-export type ECLevel = 'L' | 'M' | 'Q' | 'H'
+// ─── core primitives ──────────────────────────────────────────────────────────
 
-// Damage — frontend builds DamageConfig from UI controls, reads DamageMetadata back
-export type DamageType = 'randomNoise' | 'blockErase' | 'burst' | 'logoEmbed'
-export type DamageConfig = { type: DamageType; options: Record<string, unknown> }
-export type DamageMetadata = { totalModules: number; damagedModules: number; damagePercent: number }
+export type Bits = number[];
 
-// Decode — frontend reads all three of these to render RecoveryTrace component
-export type RecoveryTrace = { blockIndex: number; errorsDetected: number; errorsCorrected: number; status: 'success' | 'partial' | 'failed' }[]
-export type CorrectionSummary = { totalErrors: number; totalFailures: number; success: boolean }
-export type DecodeResult = { text: string; success: boolean; trace: RecoveryTrace; summary: CorrectionSummary }
+export type ModuleValue =
+  | "BLACK"
+  | "WHITE"
+  | "EMPTY"
+  | "RESERVED"
+  | "ERASED"
+  | "CORRUPTED"
+  | "RECOVERED";
 
-// Simulation — frontend builds ExperimentConfig from form, renders DataPoint[] in chart
-export type ExperimentConfig = { version: number; ecLevel: ECLevel; damageType: DamageType; minPercent: number; maxPercent: number; steps: number; trialsPerStep: number }
-export type DataPoint = { damagePercent: number; successRate: number; trials: number }
-export type ExperimentResult = { dataPoints: DataPoint[]; config: ExperimentConfig }
-export type ThresholdReport = { threshold: number; confidence: number; sampleSize: number }
-export type HeatmapData = number[][]
+export type Matrix = ModuleValue[][];
 
-export type ECBlockConfig = {
-  count: number;
-  dataCodewords: number;
-  ecCodewordsPerBlock: number;
-};
+export interface Coord { row: number; col: number; }
+export interface Rect  { x: number; y: number; width: number; height: number; }
 
-export type RecoverabilityEstimate = {
-  expectedSuccess: boolean;
-  blocksAtRisk: number[];
+// ─── encoding ─────────────────────────────────────────────────────────────────
+
+export type Mode    = "numeric" | "alphanumeric" | "byte" | "kanji";
+export type ECLevel = "L" | "M" | "Q" | "H";
+
+export interface ECBlockConfig {
+  count:                number;
+  dataCodewords:        number;
+  ecCodewordsPerBlock:  number;
+}
+
+// ─── damage ───────────────────────────────────────────────────────────────────
+
+export type DamageType =
+  | "randomNoise"
+  | "blockErase"
+  | "burst"
+  | "logoEmbed";
+
+export interface DamageConfig {
+  type:    DamageType;
+  options: Record<string, unknown>;
+}
+
+export interface DamageMetadata {
+  totalModules:   number;
+  damagedModules: number;
+  damagePercent:  number;
+}
+
+// ─── decode / recovery ────────────────────────────────────────────────────────
+
+export type RecoveryTrace = Array<{
+  blockIndex:      number;
+  errorsDetected:  number;
+  errorsCorrected: number;
+  status:          "success" | "partial" | "failed";
+}>;
+
+export interface CorrectionSummary {
+  totalErrors:   number;
+  totalFailures: number;
+  success:       boolean;
+}
+
+export interface DecodeResult {
+  text:    string;
+  success: boolean;
+  trace:   RecoveryTrace;
+  summary: CorrectionSummary;
+}
+
+// ─── simulation ───────────────────────────────────────────────────────────────
+
+export interface ExperimentConfig {
+  version:       number;
+  ecLevel:       ECLevel;
+  damageType:    DamageType;
+  minPercent:    number;
+  maxPercent:    number;
+  steps:         number;
+  trialsPerStep: number;
+}
+
+export interface DataPoint {
+  damagePercent: number;
+  successRate:   number;
+  trials:        number;
+}
+
+export interface ExperimentResult {
+  dataPoints: DataPoint[];
+  config:     ExperimentConfig;
+}
+
+export interface ThresholdReport {
+  threshold:  number;
   confidence: number;
-};
+  sampleSize: number;
+}
 
-export type InputAnalysis = {
-  mode: Mode;
-  charCount: number;
-  version: number;
-  ecLevel: ECLevel;
-};
+export type HeatmapData = number[][];
+
+// ─── API response shapes ──────────────────────────────────────────────────────
+// These cross the wire — used by both the Express route handlers and api.ts.
 
 export interface GenerateQRResult {
-  matrix: Matrix;
-  version: number;
-  ecLevel: ECLevel;
-  mode: Mode;
-  bitstream: number[];
+  matrix:        Matrix;
+  version:       number;
+  ecLevel:       ECLevel;
+  mode:          Mode;
+  bitstream:     number[];
   dataCodewords: number[];
-  ecCodewords: number[];
-  blockConfig: ECBlockConfig[];
-  svgPreview: string;
+  ecCodewords:   number[];
+  blockConfig:   ECBlockConfig[];
+  svgPreview:    string;
 }
 
 export interface CapacityResult {
@@ -63,21 +124,25 @@ export interface CapacityResult {
 
 export interface DamageResult {
   damagedMatrix: Matrix;
-  metadata: DamageMetadata;
-  recoverabilityEstimate: RecoverabilityEstimate;
+  metadata:      DamageMetadata;
+  recoverabilityEstimate: {
+    expectedSuccess: boolean;
+    blocksAtRisk:    number[];
+    confidence:      number;
+  };
 }
 
 export interface ThresholdResult {
   dataPoints: DataPoint[];
-  threshold: ThresholdReport;
+  threshold:  ThresholdReport;
 }
 
 export interface SimulationStatusResult {
-  status: 'queued' | 'running' | 'done' | 'failed';
-  progress: number;
-  partialResults?: DataPoint[];
-  result?: ThresholdResult;
-  error?: string;
+  status:          "queued" | "running" | "done" | "failed";
+  progress:        number;
+  partialResults?: DataPoint[] | null;
+  result?:         ThresholdResult | any;
+  error?:          string;
 }
 
 export interface HeatmapScanResult {
